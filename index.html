@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Idées de sorties</title>
+  <meta name="description" content="Propose une idée (titre + description) et consulte la liste des idées.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <style>
+    :root{
+      --bg:#0b0e14; --card:#121826; --text:#e5e7eb; --muted:#94a3b8; --border:#1f2937;
+      --primary:#60a5fa; --accent:#a78bfa;
+    }
+    *{box-sizing:border-box} html,body{margin:0;background:var(--bg);color:var(--text);
+      font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    .container{max-width:900px;margin:0 auto;padding:24px}
+    header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+    h1{font-size:20px;margin:0}
+    .tabs{display:flex;gap:8px;margin-bottom:16px}
+    .tab{padding:8px 12px;border-radius:10px;border:1px solid var(--border);cursor:pointer;color:var(--text);background:#0f1523}
+    .tab.active{background:linear-gradient(135deg,var(--primary),var(--accent));color:#0b0e14;font-weight:700}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px}
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+    input,textarea{width:100%;background:#0f1523;border:1px solid var(--border);border-radius:10px;color:var(--text);padding:10px 12px;font-size:14px}
+    textarea{min-height:140px;resize:vertical}
+    .btn{display:inline-flex;gap:8px;align-items:center;background:linear-gradient(135deg,var(--primary),var(--accent));color:#0b0e14;
+      border:none;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
+    .list{display:flex;flex-direction:column;gap:10px}
+    .item{background:#0f1523;border:1px solid var(--border);border-radius:12px}
+    .item summary{cursor:pointer;list-style:none;padding:12px 14px}
+    .item summary::-webkit-details-marker{display:none}
+    .item .desc{padding:0 14px 12px 14px;color:var(--text)}
+    .muted{color:var(--muted);font-size:12px}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .srch{flex:1}
+  </style>
+
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Idées de sorties</h1>
+      <span class="muted">Aucune IP ou auteur sauvegardé dans Firestore</span>
+    </header>
+
+    <div class="tabs">
+      <button id="tab-submit" class="tab active">Donner une idée</button>
+      <button id="tab-list" class="tab">Voir les idées</button>
+    </div>
+
+    <section id="panel-submit" class="card">
+      <form id="form">
+        <div>
+          <label for="title">Titre (3–120)</label>
+          <input id="title" name="title" required minlength="3" maxlength="120" placeholder="Ex: Bowling vendredi soir">
+        </div>
+        <div>
+          <label for="description">Description (10–4000)</label>
+          <textarea id="description" name="description" required minlength="10" maxlength="4000" placeholder="Détails utiles, budget, horaires..."></textarea>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn" id="send" type="submit">Envoyer</button>
+          <span id="ok" class="muted" style="display:none">Idée enregistrée ✅</span>
+          <span id="err" class="muted" style="display:none;color:#ef4444">Erreur, réessaie.</span>
+        </div>
+      </form>
+    </section>
+
+    <section id="panel-list" class="card" style="display:none">
+      <div class="row" style="margin-bottom:10px">
+        <input id="q" class="srch" placeholder="Rechercher un titre...">
+        <select id="sort">
+          <option value="new">Plus récentes</option>
+          <option value="old">Plus anciennes</option>
+          <option value="az">A → Z</option>
+          <option value="za">Z → A</option>
+        </select>
+        <button id="reload" class="tab">Rafraîchir</button>
+      </div>
+      <div id="list" class="list"></div>
+      <div id="empty" class="muted" style="display:none">Aucune idée pour le moment.</div>
+    </section>
+  </div>
+
+<script>
+  // TODO: Firebase config (colle la tienne ici)
+  const firebaseConfig = {
+  apiKey: "AIzaSyAbaUlOKBGWxbrmtpb03xDUP4zNZrZQ2FQ",
+  authDomain: "sorties-saze.firebaseapp.com",
+  projectId: "sorties-saze",
+  storageBucket: "sorties-saze.firebasestorage.app",
+  messagingSenderId: "648335236745",
+  appId: "1:648335236745:web:c270ea023b9b4775297058",
+  measurementId: "G-Z8WYQQYNVE"
+};
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  const tabSubmit = document.getElementById('tab-submit');
+  const tabList = document.getElementById('tab-list');
+  const panelSubmit = document.getElementById('panel-submit');
+  const panelList = document.getElementById('panel-list');
+
+  function show(which){
+    if(which==='submit'){
+      tabSubmit.classList.add('active'); tabList.classList.remove('active');
+      panelSubmit.style.display='block'; panelList.style.display='none';
+    } else {
+      tabList.classList.add('active'); tabSubmit.classList.remove('active');
+      panelList.style.display='block'; panelSubmit.style.display='none';
+    }
+  }
+  tabSubmit.onclick = ()=>show('submit');
+  tabList.onclick = ()=>show('list');
+
+  // Submit
+  const form = document.getElementById('form');
+  const ok = document.getElementById('ok');
+  const err = document.getElementById('err');
+  const send = document.getElementById('send');
+
+  form.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    ok.style.display='none'; err.style.display='none'; send.disabled=true;
+    try{
+      const title = form.title.value.trim();
+      const description = form.description.value.trim();
+      if(title.length<3 || title.length>120) throw new Error('Titre invalide');
+      if(description.length<10 || description.length>4000) throw new Error('Description invalide');
+      await db.collection('ideas').add({
+        title, description,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      form.reset();
+      ok.style.display='inline';
+      show('list');
+      await loadIdeas();
+    }catch(ex){
+      console.error(ex);
+      err.style.display='inline';
+    }finally{
+      send.disabled=false;
+      setTimeout(()=>{ ok.style.display='none'; err.style.display='none'; }, 2000);
+    }
+  });
+
+  // List
+  const listEl = document.getElementById('list');
+  const emptyEl = document.getElementById('empty');
+  const qInput = document.getElementById('q');
+  const sortSel = document.getElementById('sort');
+  const reloadBtn = document.getElementById('reload');
+  let cache = [];
+
+  function escapeHtml(s){return (s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+  function formatDate(ts){
+    if(!ts) return '';
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleString('fr-FR',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  }
+
+  function render(items){
+    listEl.innerHTML='';
+    if(!items.length){ emptyEl.style.display='block'; return; }
+    emptyEl.style.display='none';
+    for(const it of items){
+      const det = document.createElement('details');
+      det.className='item';
+      const sum = document.createElement('summary');
+      sum.innerHTML = '<strong>'+escapeHtml(it.title)+'</strong> <span class="muted">• '+escapeHtml(formatDate(it.createdAt))+'</span>';
+      const desc = document.createElement('div');
+      desc.className='desc';
+      desc.innerHTML = '<p>'+escapeHtml(it.description).replace(/\n/g,'<br>')+'</p>';
+      det.appendChild(sum);
+      det.appendChild(desc);
+      listEl.appendChild(det);
+    }
+  }
+
+  function sortItems(arr, how){
+    const a = [...arr];
+    if(how==='az') a.sort((x,y)=>x.title.localeCompare(y.title));
+    else if(how==='za') a.sort((x,y)=>y.title.localeCompare(x.title));
+    else if(how==='old') a.sort((x,y)=> (x.createdAt?.toMillis?.()||0) - (y.createdAt?.toMillis?.()||0));
+    else a.sort((x,y)=> (y.createdAt?.toMillis?.()||0) - (x.createdAt?.toMillis?.()||0));
+    return a;
+  }
+
+  function filterItems(arr, q){
+    const t = (q||'').toLowerCase().trim();
+    if(!t) return arr;
+    return arr.filter(i => i.title.toLowerCase().includes(t));
+  }
+
+  async function loadIdeas(){
+    const snap = await db.collection('ideas').orderBy('createdAt','desc').limit(200).get();
+    cache = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+    const items = sortItems(filterItems(cache, qInput.value), sortSel.value);
+    render(items);
+  }
+
+  qInput.addEventListener('input', ()=> render(sortItems(filterItems(cache, qInput.value), sortSel.value)));
+  sortSel.addEventListener('change', ()=> render(sortItems(filterItems(cache, qInput.value), sortSel.value)));
+  reloadBtn.addEventListener('click', loadIdeas);
+
+  // Initial
+  loadIdeas();
+</script>
+</body>
+</html>
