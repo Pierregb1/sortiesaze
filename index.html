@@ -35,6 +35,7 @@
     .srch{flex:1}
   </style>
 
+  <!-- Charger EXACTEMENT ces 2 SDK (compat), une seule fois chacun -->
   <script defer src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore-compat.js"></script>
 </head>
@@ -83,133 +84,140 @@
       <div id="empty" class="muted" style="display:none">Aucune idée pour le moment.</div>
     </section>
   </div>
-<!-- SDK Firebase (compat, pour pouvoir faire firebase.initializeApp(...)) -->
-<script defer src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js"></script>
-<script defer src="https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore-compat.js"></script>
 
-<script>
-  // TODO: Firebase config (colle la tienne ici)
-  const firebaseConfig = {
-  apiKey: "AIzaSyAbaUlOKBGWxbrmtpb03xDUP4zNZrZQ2FQ",
-  authDomain: "sorties-saze.firebaseapp.com",
-  projectId: "sorties-saze",
-  storageBucket: "sorties-saze.firebasestorage.app",
-  messagingSenderId: "648335236745",
-  appId: "1:648335236745:web:c270ea023b9b4775297058",
-  measurementId: "G-Z8WYQQYNVE"
-};
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.firestore();
+  <!-- Ton script : on attend que le DOM soit prêt (et les SDK chargés via `defer`) -->
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      // ⚠️ Ta vraie config (ok telle que tu l’as fournie)
+      const firebaseConfig = {
+        apiKey: "AIzaSyAbaUlOKBGWxbrmtpb03xDUP4zNZrZQ2FQ",
+        authDomain: "sorties-saze.firebaseapp.com",
+        projectId: "sorties-saze",
+        storageBucket: "sorties-saze.firebasestorage.app",
+        messagingSenderId: "648335236745",
+        appId: "1:648335236745:web:c270ea023b9b4775297058",
+        measurementId: "G-Z8WYQQYNVE"
+      };
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.firestore();
 
-  const tabSubmit = document.getElementById('tab-submit');
-  const tabList = document.getElementById('tab-list');
-  const panelSubmit = document.getElementById('panel-submit');
-  const panelList = document.getElementById('panel-list');
+      const tabSubmit = document.getElementById('tab-submit');
+      const tabList = document.getElementById('tab-list');
+      const panelSubmit = document.getElementById('panel-submit');
+      const panelList = document.getElementById('panel-list');
 
-  function show(which){
-    if(which==='submit'){
-      tabSubmit.classList.add('active'); tabList.classList.remove('active');
-      panelSubmit.style.display='block'; panelList.style.display='none';
-    } else {
-      tabList.classList.add('active'); tabSubmit.classList.remove('active');
-      panelList.style.display='block'; panelSubmit.style.display='none';
-    }
-  }
-  tabSubmit.onclick = ()=>show('submit');
-  tabList.onclick = ()=>show('list');
+      function show(which){
+        if(which==='submit'){
+          tabSubmit.classList.add('active'); tabList.classList.remove('active');
+          panelSubmit.style.display='block'; panelList.style.display='none';
+        } else {
+          tabList.classList.add('active'); tabSubmit.classList.remove('active');
+          panelList.style.display='block'; panelSubmit.style.display='none';
+        }
+      }
+      tabSubmit.onclick = ()=>show('submit');
+      tabList.onclick = ()=>{ show('list'); loadIdeas(); }; // charge la liste dès qu’on ouvre l’onglet
 
-  // Submit
-  const form = document.getElementById('form');
-  const ok = document.getElementById('ok');
-  const err = document.getElementById('err');
-  const send = document.getElementById('send');
+      // Submit
+      const form = document.getElementById('form');
+      const ok = document.getElementById('ok');
+      const err = document.getElementById('err');
+      const send = document.getElementById('send');
 
-  form.addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    ok.style.display='none'; err.style.display='none'; send.disabled=true;
-    try{
-      const title = form.title.value.trim();
-      const description = form.description.value.trim();
-      if(title.length<3 || title.length>120) throw new Error('Titre invalide');
-      if(description.length<10 || description.length>4000) throw new Error('Description invalide');
-      await db.collection('ideas').add({
-        title, description,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      form.addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        ok.style.display='none'; err.style.display='none'; send.disabled=true;
+        try{
+          const title = form.title.value.trim();
+          const description = form.description.value.trim();
+          if(title.length<3 || title.length>120) throw new Error('Titre invalide');
+          if(description.length<10 || description.length>4000) throw new Error('Description invalide');
+          await db.collection('ideas').add({
+            title, description,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          form.reset();
+          ok.style.display='inline';
+          show('list');
+          await loadIdeas();
+        }catch(ex){
+          console.error(ex);
+          err.style.display='inline';
+        }finally{
+          send.disabled=false;
+          setTimeout(()=>{ ok.style.display='none'; err.style.display='none'; }, 2000);
+        }
       });
-      form.reset();
-      ok.style.display='inline';
-      show('list');
-      await loadIdeas();
-    }catch(ex){
-      console.error(ex);
-      err.style.display='inline';
-    }finally{
-      send.disabled=false;
-      setTimeout(()=>{ ok.style.display='none'; err.style.display='none'; }, 2000);
-    }
-  });
 
-  // List
-  const listEl = document.getElementById('list');
-  const emptyEl = document.getElementById('empty');
-  const qInput = document.getElementById('q');
-  const sortSel = document.getElementById('sort');
-  const reloadBtn = document.getElementById('reload');
-  let cache = [];
+      // List
+      const listEl = document.getElementById('list');
+      const emptyEl = document.getElementById('empty');
+      const qInput = document.getElementById('q');
+      const sortSel = document.getElementById('sort');
+      const reloadBtn = document.getElementById('reload');
+      let cache = [];
 
-  function escapeHtml(s){return (s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
-  function formatDate(ts){
-    if(!ts) return '';
-    const d = ts.toDate ? ts.toDate() : new Date(ts);
-    return d.toLocaleString('fr-FR',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-  }
+      function escapeHtml(s){return (s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+      function formatDate(ts){
+        if(!ts) return '';
+        const d = ts.toDate ? ts.toDate() : new Date(ts);
+        return d.toLocaleString('fr-FR',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+      }
 
-  function render(items){
-    listEl.innerHTML='';
-    if(!items.length){ emptyEl.style.display='block'; return; }
-    emptyEl.style.display='none';
-    for(const it of items){
-      const det = document.createElement('details');
-      det.className='item';
-      const sum = document.createElement('summary');
-      sum.innerHTML = '<strong>'+escapeHtml(it.title)+'</strong> <span class="muted">• '+escapeHtml(formatDate(it.createdAt))+'</span>';
-      const desc = document.createElement('div');
-      desc.className='desc';
-      desc.innerHTML = '<p>'+escapeHtml(it.description).replace(/\n/g,'<br>')+'</p>';
-      det.appendChild(sum);
-      det.appendChild(desc);
-      listEl.appendChild(det);
-    }
-  }
+      function render(items){
+        listEl.innerHTML='';
+        if(!items.length){ emptyEl.style.display='block'; return; }
+        emptyEl.style.display='none';
+        for(const it of items){
+          const det = document.createElement('details');
+          det.className='item';
+          const sum = document.createElement('summary');
+          sum.innerHTML = '<strong>'+escapeHtml(it.title)+'</strong> <span class="muted">• '+escapeHtml(formatDate(it.createdAt))+'</span>';
+          const desc = document.createElement('div');
+          desc.className='desc';
+          desc.innerHTML = '<p>'+escapeHtml(it.description).replace(/\n/g,'<br>')+'</p>';
+          det.appendChild(sum);
+          det.appendChild(desc);
+          listEl.appendChild(det);
+        }
+      }
 
-  function sortItems(arr, how){
-    const a = [...arr];
-    if(how==='az') a.sort((x,y)=>x.title.localeCompare(y.title));
-    else if(how==='za') a.sort((x,y)=>y.title.localeCompare(x.title));
-    else if(how==='old') a.sort((x,y)=> (x.createdAt?.toMillis?.()||0) - (y.createdAt?.toMillis?.()||0));
-    else a.sort((x,y)=> (y.createdAt?.toMillis?.()||0) - (x.createdAt?.toMillis?.()||0));
-    return a;
-  }
+      function sortItems(arr, how){
+        const a = [...arr];
+        if(how==='az') a.sort((x,y)=>x.title.localeCompare(y.title));
+        else if(how==='za') a.sort((x,y)=>y.title.localeCompare(x.title));
+        else if(how==='old') a.sort((x,y)=> (x.createdAt?.toMillis?.()||0) - (y.createdAt?.toMillis?.()||0));
+        else a.sort((x,y)=> (y.createdAt?.toMillis?.()||0) - (x.createdAt?.toMillis?.()||0));
+        return a;
+      }
 
-  function filterItems(arr, q){
-    const t = (q||'').toLowerCase().trim();
-    if(!t) return arr;
-    return arr.filter(i => i.title.toLowerCase().includes(t));
-  }
+      function filterItems(arr, q){
+        const t = (q||'').toLowerCase().trim();
+        if(!t) return arr;
+        return arr.filter(i => i.title.toLowerCase().includes(t));
+      }
 
-  async function loadIdeas(){
-    const snap = await db.collection('ideas').orderBy('createdAt','desc').limit(200).get();
-    cache = snap.docs.map(d => ({ id:d.id, ...d.data() }));
-    const items = sortItems(filterItems(cache, qInput.value), sortSel.value);
-    render(items);
-  }
+      async function loadIdeas(){
+        try{
+          const snap = await db.collection('ideas').orderBy('createdAt','desc').limit(200).get();
+          cache = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+          const items = sortItems(filterItems(cache, qInput.value), sortSel.value);
+          render(items);
+        }catch(e){
+          console.error(e);
+          // Affiche un message sympa si règles pas publiées
+          listEl.innerHTML = '<div class="muted">Impossible de charger les idées (vérifie tes règles Firestore et ta config).</div>';
+          emptyEl.style.display='none';
+        }
+      }
 
-  qInput.addEventListener('input', ()=> render(sortItems(filterItems(cache, qInput.value), sortSel.value)));
-  sortSel.addEventListener('change', ()=> render(sortItems(filterItems(cache, qInput.value), sortSel.value)));
-  reloadBtn.addEventListener('click', loadIdeas);
+      qInput.addEventListener('input', ()=> render(sortItems(filterItems(cache, qInput.value), sortSel.value)));
+      sortSel.addEventListener('change', ()=> render(sortItems(filterItems(cache, qInput.value), sortSel.value)));
+      reloadBtn.addEventListener('click', loadIdeas);
 
-  // Initial
-  loadIdeas();
-</script>
+      // Charge une première fois à l’ouverture
+      loadIdeas();
+    });
+  </script>
 </body>
 </html>
